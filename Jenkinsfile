@@ -8,6 +8,7 @@ pipeline {
     }
 
     stages {
+
         stage('Checkout GitHub') {
             steps {
                 checkout scm
@@ -20,7 +21,6 @@ pipeline {
                 bat 'docker --version'
                 bat 'docker info'
                 bat 'kubectl version --client'
-                bat 'kubectl get nodes'
             }
         }
 
@@ -32,11 +32,13 @@ pipeline {
 
         stage('Push to Docker Hub') {
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'dockerhub-creds',
-                    usernameVariable: 'DOCKER_USER',
-                    passwordVariable: 'DOCKER_TOKEN'
-                )]) {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-creds',
+                        usernameVariable: 'abomination14',
+                        passwordVariable: 'DOCKER_TOKEN'
+                    )
+                ]) {
                     bat '''
                         @echo off
                         echo %DOCKER_TOKEN% | docker login -u %DOCKER_USER% --password-stdin
@@ -49,18 +51,33 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                bat '''
-                    kubectl set image -f deployment.yaml node-cicd-demo=%IMAGE_NAME%:%IMAGE_TAG% --local -o yaml > deployment-ready.yaml
-                    kubectl apply -f deployment-ready.yaml
-                    kubectl rollout status deployment/node-cicd-demo --timeout=180s
-                '''
+                withCredentials([
+                    file(
+                        credentialsId: 'kubeconfig-desktop',
+                        variable: 'KUBECONFIG'
+                    )
+                ]) {
+                    bat '''
+                        kubectl set image -f deployment.yaml node-cicd-demo=%IMAGE_NAME%:%IMAGE_TAG% --local -o yaml > deployment-ready.yaml
+                        kubectl apply -f deployment-ready.yaml
+                        kubectl rollout status deployment/node-cicd-demo --timeout=180s
+                    '''
+                }
             }
         }
 
         stage('Verify Deployment') {
             steps {
-                bat 'kubectl get pods'
-                bat 'kubectl get svc'
+                withCredentials([
+                    file(
+                        credentialsId: 'kubeconfig-desktop',
+                        variable: 'KUBECONFIG'
+                    )
+                ]) {
+                    bat 'kubectl get deployments'
+                    bat 'kubectl get pods'
+                    bat 'kubectl get services'
+                }
             }
         }
     }
@@ -68,9 +85,11 @@ pipeline {
     post {
         success {
             echo 'CI/CD PIPELINE SUCCESSFUL!'
+            echo 'GitHub -> Jenkins -> Docker -> Kubernetes'
         }
+
         failure {
-            echo 'PIPELINE FAILED - CHECK CONSOLE OUTPUT'
+            echo 'PIPELINE FAILED. CHECK CONSOLE OUTPUT.'
         }
     }
 }
