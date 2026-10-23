@@ -8,7 +8,6 @@ pipeline {
     }
 
     stages {
-
         stage('Checkout GitHub') {
             steps {
                 checkout scm
@@ -19,7 +18,6 @@ pipeline {
             steps {
                 bat 'git --version'
                 bat 'docker --version'
-                bat 'docker info'
                 bat 'kubectl version --client'
             }
         }
@@ -35,14 +33,18 @@ pipeline {
                 withCredentials([
                     usernamePassword(
                         credentialsId: 'dockerhub-creds',
-                        usernameVariable: 'abomination14',
+                        usernameVariable: 'DOCKER_USER',
                         passwordVariable: 'DOCKER_TOKEN'
                     )
                 ]) {
                     bat '''
                         @echo off
-                        echo %DOCKER_TOKEN% | docker login -u %DOCKER_USER% --password-stdin
+                        powershell -NoProfile -Command "$env:DOCKER_TOKEN | docker login --username $env:DOCKER_USER --password-stdin; exit $LASTEXITCODE"
+                        if errorlevel 1 exit /b 1
+
                         docker push %IMAGE_NAME%:%IMAGE_TAG%
+                        if errorlevel 1 exit /b 1
+
                         docker logout
                     '''
                 }
@@ -58,9 +60,15 @@ pipeline {
                     )
                 ]) {
                     bat '''
-                        kubectl set image -f deployment.yaml node-cicd-demo=%IMAGE_NAME%:%IMAGE_TAG% --local -o yaml > deployment-ready.yaml
-                        kubectl apply -f deployment-ready.yaml
+                        @echo off
+                        kubectl apply -f deployment.yaml
+                        if errorlevel 1 exit /b 1
+
+                        kubectl set image deployment/node-cicd-demo node-cicd-demo=%IMAGE_NAME%:%IMAGE_TAG%
+                        if errorlevel 1 exit /b 1
+
                         kubectl rollout status deployment/node-cicd-demo --timeout=180s
+                        if errorlevel 1 exit /b 1
                     '''
                 }
             }
@@ -74,9 +82,9 @@ pipeline {
                         variable: 'KUBECONFIG'
                     )
                 ]) {
-                    bat 'kubectl get deployments'
+                    bat 'kubectl get deployment node-cicd-demo'
                     bat 'kubectl get pods'
-                    bat 'kubectl get services'
+                    bat 'kubectl get service node-cicd-service'
                 }
             }
         }
@@ -85,11 +93,9 @@ pipeline {
     post {
         success {
             echo 'CI/CD PIPELINE SUCCESSFUL!'
-            echo 'GitHub -> Jenkins -> Docker -> Kubernetes'
         }
-
         failure {
-            echo 'PIPELINE FAILED. CHECK CONSOLE OUTPUT.'
+            echo 'PIPELINE FAILED - CHECK CONSOLE OUTPUT'
         }
     }
 }
