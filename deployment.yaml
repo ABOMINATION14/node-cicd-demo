@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: node-cicd-demo
-          image: abomination14/node-cicd-demo:latest
+          image: YOUR_DOCKERHUB_USERNAME/node-cicd-demo:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 3000
